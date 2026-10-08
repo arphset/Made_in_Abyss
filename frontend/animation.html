@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Animation</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 100%;
+        height: 100vh;
+        overflow: hidden;
+        background: transparent;
+        font-family: Arial, sans-serif;
+      }
+
+      #canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+
+      #music-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);
+        transition: all 0.3s;
+        z-index: 10;
+        user-select: none;
+      }
+
+      #music-btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 30px rgba(139, 92, 246, 0.6);
+      }
+
+      #music-btn.playing {
+        animation: pulse 2s ease-out infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 15px rgba(56, 189, 248, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <audio id="bg-music" loop preload="auto">
+      <source src="assets/background.mp3" type="audio/mpeg" />
+    </audio>
+    <button id="music-btn">🎵</button>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener("resize", resize);
+
+      const particles = [];
+      const particleCount = 80;
+      const connectionDistance = 180;
+      let isMusicPlaying = false;
+      const baseSpeed = 0.5;
+
+      class Particle {
+        constructor() {
+          this.x = Math.random() * canvas.width;
+          this.y = Math.random() * canvas.height;
+          this.vx = (Math.random() - 0.5) * baseSpeed;
+          this.vy = (Math.random() - 0.5) * baseSpeed;
+          this.size = Math.random() * 2.5 + 1;
+          this.color = `rgba(56, 189, 248, ${Math.random() * 0.5 + 0.3})`;
+        }
+
+        update() {
+          const speedMultiplier = isMusicPlaying ? 5 : 1;
+          this.x += this.vx * speedMultiplier;
+          this.y += this.vy * speedMultiplier;
+
+          if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+          if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+        }
+
+        draw() {
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function init() {
+        for (let i = 0; i < particleCount; i++) {
+          particles.push(new Particle());
+        }
+      }
+
+      function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].update();
+          particles[i].draw();
+
+          for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < connectionDistance) {
+              ctx.beginPath();
+              ctx.strokeStyle = `rgba(56, 189, 248, ${0.3 * (1 - distance / connectionDistance)})`;
+              ctx.lineWidth = 1;
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.stroke();
+            }
+          }
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      const btn = document.getElementById("music-btn");
+      const audio = document.getElementById("bg-music");
+
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (audio.paused) {
+          audio
+            .play()
+            .then(() => {
+              btn.textContent = "⏸️";
+              btn.classList.add("playing");
+              isMusicPlaying = true;
+            })
+            .catch((e) => console.log("Autoplay blocked:", e));
+        } else {
+          audio.pause();
+          btn.textContent = "🎵";
+          btn.classList.remove("playing");
+          isMusicPlaying = false;
+        }
+      });
+
+      init();
+      animate();
+    </script>
+  </body>
+</html>

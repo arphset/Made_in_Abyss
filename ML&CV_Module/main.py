@@ -1,15 +1,14 @@
 import cv2
 import numpy as np
+from ultralytics import YOLO
+from openai import OpenAI
+from ollama.ollama_access import get_recommendations
 from filters.blure_filter import check_blur
 from filters.brightness_filter import check_brightness
 from filters.YOLO import detect_objects_yolo
-
+import os
 
 def analyze_image(image_path):
-    """
-    Основной анализатор изображения.
-    Принимает путь к файлу, возвращает словарь с метриками и проблемами.
-    """
     image = cv2.imread(image_path)
     if image is None:
         return {"error": "Картинка не найдена"}
@@ -34,13 +33,10 @@ def analyze_image(image_path):
 
     if brightness_data["is_overexposed"]:
         issues.append("Пересвет (потеря деталей в светах)")
-
     if brightness_data["is_underexposed"]:
         issues.append("Недосвет (провал в тенях)")
-
     if brightness_data["is_dark"]:
         issues.append("Слишком темно (общая экспозиция)")
-
     if brightness_data["is_bright"]:
         issues.append("Общий пересвет кадра")
 
@@ -53,6 +49,7 @@ def analyze_image(image_path):
         print(f"\n❌ ПРОБЛЕМЫ: {', '.join(issues)}")
 
     return {
+        # Старые метрики (для совместимости)
         "acf_score": blur_data["acf_score"],
         "laplacian_var": blur_data["laplacian_var"],
         "brightness": brightness_data["brightness"],
@@ -60,19 +57,27 @@ def analyze_image(image_path):
         "fill_rate": yolo_data["fill_rate"],
         "is_off_center": yolo_data["is_off_center"],
         "composition_bad": yolo_data["composition_bad"],
-        "issues": issues
+        "object_found": yolo_data["object_found"],
+        "issues": issues,
+
+        # Новые метрики из улучшенного blur-фильтра
+        "median_laplacian": blur_data.get("median_laplacian", 0),
+        "sobel_var": blur_data.get("sobel_var", 0),
+        "sharpness_score": blur_data.get("sharpness_score", 0),
+        "blur_method": blur_data.get("method", "неизвестно"),
+
+        # Метрики яркости
+        "underexposed_pct": brightness_data["underexposed_pct"],
+        "is_dark": brightness_data["is_dark"],
+        "is_bright": brightness_data["is_bright"],
+        "is_overexposed": brightness_data["is_overexposed"],
+        "is_underexposed": brightness_data["is_underexposed"],
     }
 
-
-# Блок для самостоятельного запуска (не выполняется при импорте)
 if __name__ == "__main__":
-    import os
-
     current_dir = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(current_dir, "t.jpg")
-
-    if os.path.exists(image_path):
-        data = analyze_image(image_path)
-        print("\nАнализ завершен. Данные готовы для передачи в Ollama.")
-    else:
-        print(f"Файл {image_path} не найден. Положите тестовое изображение в папку с main.py")
+    data = analyze_image(image_path)
+    print("\nГенерирую рекомендации через LLM...\n")
+    llm_response = get_recommendations(data)
+    print(llm_response)

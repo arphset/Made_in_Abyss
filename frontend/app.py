@@ -16,6 +16,7 @@ sys.path.insert(0, ml_module_path)
 
 from main import analyze_image
 from ollama.ollama_access import get_recommendations
+from filters.score_calculator import calculate_quality_score
 
 st.set_page_config(
     page_title="QualityJPG",
@@ -36,21 +37,17 @@ def format_recommendations(recs):
         line = line.strip()
         if not line:
             continue
-        # Убираем markdown-символы жирного/курсива из всего текста
         line = line.replace('**', '').replace('*', '').replace('`', '')
-        # Убираем заголовки ### #### в начале строки
         clean_line = re.sub(r'^#+\s+', '', line)
         if re.match(r'^\d+\.', clean_line):
             html_parts.append('<p style="margin:8px 0;padding-left:10px;">' + clean_line + '</p>')
         elif ':' in clean_line and any(c.isdigit() for c in clean_line):
-            # Строки типа "ACF (размытие): 0.859" — выделяем ключ жирным
             key, _, value = clean_line.partition(':')
             html_parts.append(
                 '<p style="margin:4px 0;color:rgba(200,220,255,0.9);">'
                 '<span style="color:#4a9eff;font-weight:600;">' + key + ':</span>' + value + '</p>'
             )
         elif re.match(r'^[А-Яа-яA-Za-z].*:$', clean_line):
-            # Заголовки типа "Советы по улучшению фотографии:"
             html_parts.append('<h4 style="color:#4a9eff;margin-top:14px;margin-bottom:6px;">' + clean_line + '</h4>')
         else:
             html_parts.append('<p style="margin:4px 0;">' + clean_line + '</p>')
@@ -71,7 +68,6 @@ audio_base64 = get_audio_base64()
 
 # ==========================================
 # IFRAME 1: CANVAS-АНИМАЦИЯ (ФОН)
-# Скорость ×50 когда музыка включена
 # ==========================================
 canvas_html = """
 <!DOCTYPE html>
@@ -88,7 +84,6 @@ canvas_html = """
 <canvas id="bgCanvas"></canvas>
 <script>
 (function() {
-    // Делаем iframe фоном на весь экран
     if (window.parent !== window) {
         try {
             const iframes = window.parent.document.querySelectorAll('iframe');
@@ -111,18 +106,14 @@ canvas_html = """
     const PARTICLE_COUNT = 80;
     const CONNECTION_DIST = 150;
     const BASE_SPEED = 0.5;
-
-    // Множитель скорости — 50× когда музыка играет
     let speedMultiplier = 1;
 
-    // Слушаем изменения localStorage от кнопки музыки
     window.addEventListener('storage', function(e) {
         if (e.key === 'musicPlaying') {
             speedMultiplier = (e.newValue === 'true') ? 50 : 1;
         }
     });
 
-    // Проверяем начальное значение при загрузке
     try {
         if (localStorage.getItem('musicPlaying') === 'true') {
             speedMultiplier = 50;
@@ -147,28 +138,14 @@ canvas_html = """
             this.radius = Math.random() * 2 + 1;
         }
         update() {
-            // Применяем текущий множитель скорости
             this.vx = this.baseVx * speedMultiplier;
             this.vy = this.baseVy * speedMultiplier;
-
             this.x += this.vx;
             this.y += this.vy;
-
-            // Отскок от краёв + защита от вылета за экран
-            if (this.x < 0) {
-                this.x = 0;
-                this.baseVx = Math.abs(this.baseVx);
-            } else if (this.x > canvas.width) {
-                this.x = canvas.width;
-                this.baseVx = -Math.abs(this.baseVx);
-            }
-            if (this.y < 0) {
-                this.y = 0;
-                this.baseVy = Math.abs(this.baseVy);
-            } else if (this.y > canvas.height) {
-                this.y = canvas.height;
-                this.baseVy = -Math.abs(this.baseVy);
-            }
+            if (this.x < 0) { this.x = 0; this.baseVx = Math.abs(this.baseVx); }
+            else if (this.x > canvas.width) { this.x = canvas.width; this.baseVx = -Math.abs(this.baseVx); }
+            if (this.y < 0) { this.y = 0; this.baseVy = Math.abs(this.baseVy); }
+            else if (this.y > canvas.height) { this.y = canvas.height; this.baseVy = -Math.abs(this.baseVy); }
         }
         draw() {
             ctx.beginPath();
@@ -184,8 +161,6 @@ canvas_html = """
 
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Рисуем связи
         for (let i = 0; i < particles.length; i++) {
             for (let j = i + 1; j < particles.length; j++) {
                 const dx = particles[i].x - particles[j].x;
@@ -202,10 +177,7 @@ canvas_html = """
                 }
             }
         }
-
-        // Обновляем и рисуем частицы
         particles.forEach(function(p) { p.update(); p.draw(); });
-
         requestAnimationFrame(animate);
     }
     animate();
@@ -304,7 +276,7 @@ if audio_base64:
                 }}).catch(function(e) {{
                     console.log('Play failed:', e);
                     btn.textContent = '';
-                    setTimeout(function() {{ btn.textContent = '🎵'; }}, 2000);
+                    setTimeout(function() {{ btn.textContent = ''; }}, 2000);
                 }});
             }} else {{
                 audio.pause();
@@ -385,6 +357,32 @@ custom_css = """
     body {
         background: #0a0f1a !important;
     }
+    .score-card {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+        border: 2px solid rgba(56, 189, 248, 0.4);
+        border-radius: 16px;
+        padding: 2rem;
+        text-align: center;
+        margin: 1rem 0;
+    }
+    .score-value {
+        font-size: 4rem;
+        font-weight: 700;
+        color: #38bdf8;
+    }
+    .score-verdict {
+        font-size: 1.5rem;
+        color: #e2e8f0;
+        margin-top: 0.5rem;
+    }
+    .penalty-item {
+        background: rgba(239, 68, 68, 0.1);
+        border-left: 3px solid #ef4444;
+        padding: 8px 12px;
+        margin: 8px 0;
+        border-radius: 4px;
+        color: #fca5a5;
+    }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -453,6 +451,9 @@ if uploaded_file:
                     file_path, _ = save_uploaded_file(uploaded_file, img_array)
                     analysis_result = analyze_image(file_path)
 
+                    # Рассчитываем итоговую оценку качества
+                    score_data = calculate_quality_score(analysis_result)
+
                     recs = None
                     if "error" not in analysis_result:
                         with st.spinner("💡 Формирую рекомендации..."):
@@ -461,10 +462,57 @@ if uploaded_file:
                     st.markdown("---")
                     st.subheader("📊 Результаты проверки")
 
-                    m1, m2, m3 = st.columns(3)
+                    # Карточка с итоговой оценкой
+                    st.markdown(f"""
+                    <div class="score-card">
+                        <div class="score-value">{score_data['emoji']} {score_data['score']}/10</div>
+                        <div class="score-verdict">{score_data['verdict']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Детализация штрафов
+                    if score_data["penalties"]:
+                        st.subheader("📉 Что снизило оценку:")
+                        for penalty in score_data["penalties"]:
+                            st.markdown(f'<div class="penalty-item">{penalty}</div>', unsafe_allow_html=True)
+
+                    # Метрики
+                    st.subheader("📐 Детальные метрики")
+
+                    # Первая строка: основные метрики
+                    m1, m2, m3, m4 = st.columns(4)
                     m1.metric("ACF Score", f"{analysis_result['acf_score']:.3f}")
                     m2.metric("Яркость", f"{analysis_result['brightness']:.0f}")
                     m3.metric("Заполнение", f"{analysis_result['fill_rate']*100:.1f}%")
+                    m4.metric("Индекс чёткости", f"{analysis_result.get('sharpness_score', 0):.2f}")
+
+                    # Вторая строка: расширенные метрики резкости
+                    st.markdown("---")
+                    st.markdown("#### 🔬 Метрики резкости")
+
+                    r1, r2, r3 = st.columns(3)
+                    r1.metric(
+                        "Лапласиан (глобальный)",
+                        f"{analysis_result.get('laplacian_var', 0):.0f}",
+                        help="Дисперсия лапласиана по всему изображению. Высокое значение = много текстур."
+                    )
+                    r2.metric(
+                        "Лапласиан (локальный, медиана)",
+                        f"{analysis_result.get('median_laplacian', 0):.0f}",
+                        help="Медиана лапласиана по блокам 64x64. Устойчива к тёмным/светлым фонам."
+                    )
+                    r3.metric(
+                        "Вариация градиента Собеля",
+                        f"{analysis_result.get('sobel_var', 0):.0f}",
+                        help="Измеряет чёткость краёв объектов. Лучше лапласиана для тёмных фото."
+                    )
+
+                    # Третья строка: экспозиция
+                    st.markdown("#### 💡 Метрики экспозиции")
+
+                    e1, e2 = st.columns(2)
+                    e1.metric("Пересвет", f"{analysis_result.get('overexposed_pct', 0):.1f}%")
+                    e2.metric("Недосвет", f"{analysis_result.get('underexposed_pct', 0):.1f}%")
 
                     if analysis_result['issues']:
                         st.warning("⚠️ Выявлено проблем: " + str(len(analysis_result['issues'])))
@@ -482,7 +530,6 @@ if uploaded_file:
                         </div>
                         """, unsafe_allow_html=True)
 
-                        # Отступ между блоком рекомендаций и полем копирования
                         st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
 
                         st.code(recs, language="text")

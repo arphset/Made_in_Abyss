@@ -1,1 +1,13 @@
 .env
+frontend/uploads/
+*.db
+__pycache__/
+*.pyc
+test_jpegs
+frontend/assets/background.mp3
+
+
+*.pt
+yolov8n.pt
+yolov8n-seg.pt
+yolov8m.pt

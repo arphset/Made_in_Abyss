@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import re
 import base64
+import json
 
 # Настройка путей
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -276,7 +277,7 @@ if audio_base64:
                 }}).catch(function(e) {{
                     console.log('Play failed:', e);
                     btn.textContent = '';
-                    setTimeout(function() {{ btn.textContent = ''; }}, 2000);
+                    setTimeout(function() {{ btn.textContent = '🎵'; }}, 2000);
                 }});
             }} else {{
                 audio.pause();
@@ -422,6 +423,13 @@ st.markdown('<div class="app-subtitle">AI-анализ качества фото
 
 uploaded_file = st.file_uploader("", type=['jpg', 'jpeg', 'png'], label_visibility="collapsed")
 
+# Сброс сессии при загрузке нового файла
+if uploaded_file and st.session_state.get('current_file_name') != uploaded_file.name:
+    st.session_state['current_file_name'] = uploaded_file.name
+    st.session_state['analysis_done'] = False
+    st.session_state['analysis_result'] = None
+    st.session_state['recs'] = None
+
 if uploaded_file:
     is_valid, result = validate_image(uploaded_file)
 
@@ -443,21 +451,45 @@ if uploaded_file:
             st.info("💡 Экспозицию и баланс света")
             st.info("📐 Композицию и заполнение кадра")
 
-        analyze_button = st.button("🔍 Анализировать фото", type="primary", use_container_width=True)
+        # КНОПКА С УНИКАЛЬНЫМ КЛЮЧОМ (исправляет DuplicateElementId)
+        analyze_button = st.button(
+            "🔍 Анализировать фото",
+            type="primary",
+            use_container_width=True,
+            key="analyze_btn_main"
+        )
 
         if analyze_button:
-            with st.spinner("⏳ Нейросеть анализирует изображение..."):
-                try:
-                    file_path, _ = save_uploaded_file(uploaded_file, img_array)
-                    analysis_result = analyze_image(file_path)
+            st.session_state['analysis_done'] = True
+            # Сбрасываем старые результаты при новом анализе
+            st.session_state['analysis_result'] = None
+            st.session_state['recs'] = None
 
+        # Показываем результаты, если анализ был выполнен
+        # (даже после перезапуска от radio-кнопки)
+        if st.session_state.get('analysis_done'):
+            try:
+                # Если результаты ещё не посчитаны — считаем
+                if st.session_state.get('analysis_result') is None:
+                    with st.spinner("⏳ Нейросеть анализирует изображение..."):
+                        file_path, _ = save_uploaded_file(uploaded_file, img_array)
+                        st.session_state['analysis_result'] = analyze_image(file_path)
+
+                    if "error" not in st.session_state['analysis_result']:
+                        with st.spinner("💡 Формирую рекомендации..."):
+                            st.session_state['recs'] = get_recommendations(st.session_state['analysis_result'])
+                    else:
+                        st.session_state['recs'] = None
+
+                analysis_result = st.session_state['analysis_result']
+                recs = st.session_state.get('recs')
+
+                # Проверяем наличие ошибки
+                if "error" in analysis_result:
+                    st.error("❌ " + analysis_result["error"])
+                else:
                     # Рассчитываем итоговую оценку качества
                     score_data = calculate_quality_score(analysis_result)
-
-                    recs = None
-                    if "error" not in analysis_result:
-                        with st.spinner("💡 Формирую рекомендации..."):
-                            recs = get_recommendations(analysis_result)
 
                     st.markdown("---")
                     st.subheader("📊 Результаты проверки")
@@ -488,7 +520,7 @@ if uploaded_file:
 
                     # Вторая строка: расширенные метрики резкости
                     st.markdown("---")
-                    st.markdown("#### 🔬 Метрики резкости")
+                    st.markdown("####  Метрики резкости")
 
                     r1, r2, r3 = st.columns(3)
                     r1.metric(
@@ -508,14 +540,14 @@ if uploaded_file:
                     )
 
                     # Третья строка: экспозиция
-                    st.markdown("#### 💡 Метрики экспозиции")
+                    st.markdown("####  Метрики экспозиции")
 
                     e1, e2 = st.columns(2)
                     e1.metric("Пересвет", f"{analysis_result.get('overexposed_pct', 0):.1f}%")
                     e2.metric("Недосвет", f"{analysis_result.get('underexposed_pct', 0):.1f}%")
 
                     if analysis_result['issues']:
-                        st.warning("⚠️ Выявлено проблем: " + str(len(analysis_result['issues'])))
+                        st.warning("️ Выявлено проблем: " + str(len(analysis_result['issues'])))
                         for issue in analysis_result['issues']:
                             st.text("• " + issue)
                     else:
@@ -530,10 +562,62 @@ if uploaded_file:
                         </div>
                         """, unsafe_allow_html=True)
 
-                        st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+                        # Переключатель формата копирования
+                        st.markdown("### 📋 Копирование результатов")
+                        export_format = st.radio(
+                            "Выберите формат:",
+                            options=["📝 Текст", "🔧 JSON"],
+                            horizontal=True,
+                            label_visibility="collapsed",
+                            key="export_format_radio"
+                        )
 
-                        st.code(recs, language="text")
-                        st.caption("📋 Скопируйте текст выше для использования в заметках")
+                        if export_format == "📝 Текст":
+                            st.code(recs, language="text")
+                            st.caption("📋 Скопируйте текст выше для использования в заметках")
+                        else:
+                            # Формируем JSON со всеми метриками
+                            quality_score_data = analysis_result.get("quality_score", {})
+                            if not isinstance(quality_score_data, dict):
+                                quality_score_data = {}
 
-                except Exception as e:
-                    st.error(" Ошибка обработки: " + str(e))
+                            export_data = {
+                                "summary": {
+                                    "quality_score": quality_score_data.get("score", 0),
+                                    "verdict": quality_score_data.get("verdict", ""),
+                                    "issues_count": len(analysis_result.get("issues", [])),
+                                    "issues": analysis_result.get("issues", [])
+                                },
+                                "metrics": {
+                                    "sharpness": {
+                                        "acf_score": round(float(analysis_result.get("acf_score", 0)), 3),
+                                        "laplacian_global": round(float(analysis_result.get("laplacian_var", 0)), 1),
+                                        "laplacian_local_median": round(float(analysis_result.get("median_laplacian", 0)), 1),
+                                        "sobel_gradient_variance": round(float(analysis_result.get("sobel_var", 0)), 1),
+                                        "sharpness_index": round(float(analysis_result.get("sharpness_score", 0)), 2)
+                                    },
+                                    "exposure": {
+                                        "brightness": round(float(analysis_result.get("brightness", 0)), 1),
+                                        "overexposed_pct": round(float(analysis_result.get("overexposed_pct", 0)), 1),
+                                        "underexposed_pct": round(float(analysis_result.get("underexposed_pct", 0)), 1)
+                                    },
+                                    "composition": {
+                                        "fill_rate_pct": round(float(analysis_result.get("fill_rate", 0)) * 100, 1),
+                                        "is_off_center": bool(analysis_result.get("is_off_center", False)),
+                                        "object_found": bool(analysis_result.get("object_found", True))
+                                    }
+                                },
+                                "ai_recommendations": recs,
+                                "file_info": {
+                                    "filename": uploaded_file.name,
+                                    "resolution": f"{img_array.shape[1]}x{img_array.shape[0]}",
+                                    "file_size_kb": round(uploaded_file.size / 1024, 1)
+                                }
+                            }
+
+                            json_output = json.dumps(export_data, ensure_ascii=False, indent=2)
+                            st.code(json_output, language="json")
+                            st.caption("📋 JSON скопирован — удобно для интеграции с другими системами")
+
+            except Exception as e:
+                st.error("❌ Ошибка обработки: " + str(e))

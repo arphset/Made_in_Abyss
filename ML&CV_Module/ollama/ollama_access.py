@@ -1,23 +1,28 @@
+import os
+import httpx
 from openai import OpenAI
+
+# ==========================================
+# ПРИНУДИТЕЛЬНО ОТКЛЮЧАЕМ ПРОКСИ
+# ==========================================
+# 1. Удаляем переменные окружения
+for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
+    os.environ.pop(proxy_var, None)
 
 def get_recommendations(data: dict):
     """Генерирует рекомендации через локальную Ollama"""
 
-    # 1. ПРОВЕРКА НА ОШИБКУ
     if "error" in data:
         return f"❌ Анализ не выполнен: {data['error']}. Проверьте имя файла и путь."
 
-    # 2. БЕЗОПАСНОЕ форматирование (работает с numpy типами)
     def safe_fmt(value, format_spec):
         try:
             if value is None:
                 return "N/A"
-            # float() понимает и numpy.float64, и обычные числа
             return f"{float(value):{format_spec}}"
         except (ValueError, TypeError):
             return "N/A"
 
-    # Собираем метрики
     fill_rate_val = data.get('fill_rate')
     fill_rate_display = safe_fmt(fill_rate_val * 100 if fill_rate_val is not None else None, '.1f')
 
@@ -38,7 +43,8 @@ def get_recommendations(data: dict):
     issues = data.get('issues', [])
     issues_text = ", ".join(issues) if issues else "Проблем не выявлено"
 
-    # 3. ПРОМПТ
+    sharpness_val = safe_fmt(data.get('sharpness_score'), '.2f')
+
     prompt = f"""
 Ты эксперт по фотографии для маркетплейсов (Wildberries/Ozon).
 Анализируй метрики и давай краткий отчёт. СТРОГО следуй формату.
@@ -49,10 +55,10 @@ def get_recommendations(data: dict):
 ВЫЯВЛЕННЫЕ ПРОБЛЕМЫ: {issues_text}
 
 ИНСТРУКЦИЯ ПО ОЦЕНКЕ ЧЁТКОСТИ:
-- Индекс чёткости {safe_fmt(data.get('sharpness_score'), '.2f')} — это КОНКРЕТНОЕ значение, не диапазон.
-- Если значение > 0.7: напиши "Фото чёткое (индекс чёткости {safe_fmt(data.get('sharpness_score'), '.2f')})"
-- Если значение 0.45-0.7: напиши "Приемлемая чёткость (индекс чёткости {safe_fmt(data.get('sharpness_score'), '.2f')})"
-- Если значение < 0.45: напиши "Фото размытое (индекс чёткости {safe_fmt(data.get('sharpness_score'), '.2f')})"
+- Индекс чёткости {sharpness_val} — это КОНКРЕТНОЕ значение, не диапазон.
+- Если значение > 0.7: напиши "Фото чёткое (индекс чёткости {sharpness_val})"
+- Если значение 0.45-0.7: напиши "Приемлемая чёткость (индекс чёткости {sharpness_val})"
+- Если значение < 0.45: напиши "Фото размытое (индекс чёткости {sharpness_val})"
 - НИКОГДА не выдумывай диапазоны. Используй ТОЛЬКО реальное значение из метрик.
 
 ПРИМЕР ПРАВИЛЬНОГО ОТВЕТА:
@@ -79,12 +85,26 @@ ACF (автокорреляция, размытие): 0.300
 3. Попробуйте добавить больше деталей в фон для контекста.
 ---
 
+ВАЖНЫЕ ПРАВИЛА:
+- ОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ. Не используй латиницу, китайские иероглифы или другие языки.
+- НЕ используй символы #, *, `, _ в ответе.
+- НЕ пиши технические предупреждения или ошибки.
+- НЕ отвечай в форме диалога ("Конечно!", "Вот ваш отчёт", "Здравствуйте").
+- НЕ используй английские слова (например, "post-processing", "marketplace", "fill rate"). Пиши только по-русски.
+- Пиши кратко, по делу.
+- Опирайся ТОЛЬКО на переданные метрики.
+
 ТВОЙ ОТВЕТ (строго в том же формате, что и пример выше):
 """
 
+    # КЛИЕНТ БЕЗ ПРОКСИ — trust_env=False игнорирует ВСЕ системные прокси
     client = OpenAI(
         base_url="http://localhost:11434/v1",
-        api_key="ollama"
+        api_key="ollama",
+        http_client=httpx.Client(
+            timeout=60.0,
+            trust_env=False  # ← КЛЮЧЕВОЙ ПАРАМЕТР: игнорирует HTTP_PROXY, ALL_PROXY и т.д.
+        )
     )
 
     try:

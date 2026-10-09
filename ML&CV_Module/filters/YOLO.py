@@ -20,9 +20,15 @@ def detect_objects_yolo(image):
     all_centers_x = []
     all_centers_y = []
 
+    # ✅ НОВОЕ: создаём список для bounding boxes
+    boxes_list = []
+
     for box in results[0].boxes:
         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
         conf = float(box.conf[0].cpu().numpy())
+
+        # ✅ НОВОЕ: добавляем координаты в список
+        boxes_list.append((int(x1), int(y1), int(x2), int(y2)))
 
         obj_area = (x2 - x1) * (y2 - y1)
         fill_rate = obj_area / image_area
@@ -81,5 +87,6 @@ def detect_objects_yolo(image):
         "object_found": object_found,
         "is_off_center": is_off_center,
         "composition_bad": composition_bad,
-        "issues_comp": issues_comp
+        "issues_comp": issues_comp,
+        "boxes": boxes_list  # ✅ Теперь boxes_list определён
     }

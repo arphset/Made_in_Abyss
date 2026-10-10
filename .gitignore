@@ -11,3 +11,36 @@ frontend/assets/background.mp3
 yolov8n.pt
 yolov8n-seg.pt
 yolov8m.pt
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes (не коммитим данные)
+frontend/uploads/
+assets/background.mp3
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

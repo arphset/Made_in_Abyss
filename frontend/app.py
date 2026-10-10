@@ -90,7 +90,7 @@ canvas_html = """
             const iframes = window.parent.document.querySelectorAll('iframe');
             for (let iframe of iframes) {
                 if (iframe.contentWindow === window) {
-                    iframe.style.cssText = 'position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:0!important;border:none!important;pointer-events:none!important;';
+                    iframe.style.cssText = 'position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:0!important;border:none!important;pointer-events:none!important;color-scheme:normal!important;';
                     if (iframe.parentElement) {
                         iframe.parentElement.style.height = '0';
                         iframe.parentElement.style.overflow = 'visible';
@@ -252,7 +252,7 @@ if audio_base64:
                 const iframes = window.parent.document.querySelectorAll('iframe');
                 for (let iframe of iframes) {{
                     if (iframe.contentWindow === window) {{
-                        iframe.style.cssText = 'position:fixed!important;bottom:20px!important;left:20px!important;width:56px!important;height:56px!important;z-index:9999!important;border:none!important;pointer-events:auto!important;background:transparent!important;';
+                        iframe.style.cssText = 'position:fixed!important;bottom:20px!important;left:20px!important;width:56px!important;height:56px!important;z-index:9999!important;border:none!important;pointer-events:auto!important;background:transparent!important;color-scheme:normal!important;';
                         if (iframe.parentElement) {{
                             iframe.parentElement.style.height = '0';
                             iframe.parentElement.style.overflow = 'visible';
@@ -311,13 +311,14 @@ else:
 custom_css = """
 <style>
     .block-container, [data-testid="stAppViewContainer"], [data-testid="stHeader"], header {
+        background: transparent !important;
+    }
+    .block-container {
         position: relative;
         z-index: 1;
-        background: transparent !important;
     }
     .main .block-container {
         background: rgba(10, 15, 25, 0.8);
-        backdrop-filter: blur(6px);
         border-radius: 16px;
         margin-top: 20px;
         padding: 30px 40px;

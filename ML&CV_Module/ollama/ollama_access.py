@@ -2,12 +2,13 @@ import os
 import httpx
 from openai import OpenAI
 
-# ==========================================
-# ПРИНУДИТЕЛЬНО ОТКЛЮЧАЕМ ПРОКСИ
-# ==========================================
-# 1. Удаляем переменные окружения
+
+# Отключаем прокси
 for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
     os.environ.pop(proxy_var, None)
+
+# Адрес Ollama из переменной окружения
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 def get_recommendations(data: dict):
     """Генерирует рекомендации через локальную Ollama"""
@@ -109,11 +110,11 @@ ACF (автокорреляция, размытие): 0.300
 
     # КЛИЕНТ БЕЗ ПРОКСИ — trust_env=False игнорирует ВСЕ системные прокси
     client = OpenAI(
-        base_url="http://localhost:11434/v1",
+        base_url=f"{OLLAMA_HOST}/v1",
         api_key="ollama",
         http_client=httpx.Client(
             timeout=60.0,
-            trust_env=False  # ← КЛЮЧЕВОЙ ПАРАМЕТР: игнорирует HTTP_PROXY, ALL_PROXY и т.д.
+            trust_env=False
         )
     )
 

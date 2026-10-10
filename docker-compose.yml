@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: qualityjpg_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: qualityjpg
+      POSTGRES_USER: qualityjpg_user
+      POSTGRES_PASSWORD: qualityjpg_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qualityjpg_user -d qualityjpg"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: qualityjpg_app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      # ВАЖНО: сначала подтомы, потом общий том!
+      - ./frontend/uploads:/app/frontend/uploads
+      - ./assets:/app/assets
+      - ./frontend/app.py:/app/frontend/app.py
+    environment:
+      - DATABASE_URL=postgresql://qualityjpg_user:qualityjpg_secret@db:5432/qualityjpg
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  pgdata:

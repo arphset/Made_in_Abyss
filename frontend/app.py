@@ -8,6 +8,8 @@ import sys
 import re
 import base64
 import json
+import math
+
 
 # Настройка путей
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,12 +21,29 @@ from main import analyze_image
 from ollama.ollama_access import get_recommendations
 from filters.score_calculator import calculate_quality_score
 
+# Импорт репозитория базы данных
+sys.path.insert(0, project_root)
+from database import db_repo
+
 st.set_page_config(
     page_title="QualityJPG",
     page_icon="📸",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+
+def safe_float(value, default=0):
+    """Безопасное преобразование в float, обработка nan/None"""
+    if value is None:
+        return default
+    try:
+        result = float(value)
+        if math.isnan(result) or math.isinf(result):
+            return default
+        return result
+    except (TypeError, ValueError):
+        return default
 
 # ==========================================
 # ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ РЕКОМЕНДАЦИЙ
@@ -421,7 +440,6 @@ if uploaded_file and st.session_state.get('current_file_name') != uploaded_file.
     st.session_state['analysis_done'] = False
     st.session_state['analysis_result'] = None
     st.session_state['recs'] = None
-
 if uploaded_file:
     is_valid, result = validate_image(uploaded_file)
 
@@ -462,8 +480,9 @@ if uploaded_file:
                 # Если результаты ещё не посчитаны — считаем
                 if st.session_state.get('analysis_result') is None:
                     with st.spinner("⏳ Нейросеть анализирует изображение..."):
-                        file_path, _ = save_uploaded_file(uploaded_file, img_array)
+                        file_path, storage_name = save_uploaded_file(uploaded_file, img_array)
                         st.session_state['analysis_result'] = analyze_image(file_path)
+                        st.session_state['storage_filename'] = storage_name
 
                     if "error" not in st.session_state['analysis_result']:
                         with st.spinner(" Формирую рекомендации..."):
@@ -544,6 +563,53 @@ if uploaded_file:
                         st.success("✅ Фото соответствует стандартам!")
 
                     if recs:
+                        # Сохранение результата в базу данных
+                        try:
+                            export_data_for_db = {
+                                'filename': uploaded_file.name,
+                                'storage_filename': storage_name,  # Используем локальную переменную!
+                                'overall_score': score_data['score'],
+                                'verdict': score_data['verdict'],
+                                'metrics': {
+                                    'sharpness': {
+                                        'acf_score': round(safe_float(analysis_result.get('acf_score')), 3),
+                                        'laplacian_global': round(safe_float(analysis_result.get('laplacian_var')), 1),
+                                        'laplacian_local_median': round(safe_float(analysis_result.get('median_laplacian')), 1),
+                                        'sobel_gradient_variance': round(safe_float(analysis_result.get('sobel_var')), 1),
+                                        'sharpness_index': round(safe_float(analysis_result.get('sharpness_score')), 2)
+                                    },
+                                    'exposure': {
+                                        'brightness': round(safe_float(analysis_result.get('brightness')), 1),
+                                        'overexposed_pct': round(safe_float(analysis_result.get('overexposed_pct')), 1),
+                                        'underexposed_pct': round(safe_float(analysis_result.get('underexposed_pct')), 1)
+                                    },
+                                    'composition': {
+                                        'fill_rate_pct': round(safe_float(analysis_result.get('fill_rate')) * 100, 1),
+                                        'is_off_center': bool(analysis_result.get('is_off_center', False)),
+                                        'object_found': bool(analysis_result.get('object_found', True))
+                                    }
+                                },
+                                'summary': {
+                                    'issues': analysis_result.get('issues', [])
+                                },
+                                'penalties': score_data.get('penalties', []),
+                                'ai_recommendations': recs,
+                                'file_info': {
+                                    'resolution': f"{img_array.shape[1]}x{img_array.shape[0]}",
+                                    'file_size_kb': round(uploaded_file.size / 1024, 1)
+                                }
+                            }
+
+                            analysis_id = db_repo.save_analysis_result(export_data_for_db)
+                            st.success(f"✅ Результат сохранён в БД (ID: {str(analysis_id)[:8]}...)")
+
+                        except Exception as db_error:
+                            st.warning(f"⚠️ Не удалось сохранить в БД: {db_error}")
+                            analysis_id = db_repo.save_analysis_result(export_data_for_db)
+                            st.success(f"✅ Результат сохранён в БД (ID: {str(analysis_id)[:8]}...)")
+
+                        except Exception as db_error:
+                            st.warning(f"⚠️ Не удалось сохранить в БД: {db_error}")
                         formatted_recs = format_recommendations(recs)
                         st.markdown(f"""
                         <div style="background:rgba(30,40,60,0.7);border:1px solid rgba(100,180,255,0.3);border-radius:12px;padding:20px;margin-top:15px;">

@@ -440,6 +440,8 @@ if uploaded_file and st.session_state.get('current_file_name') != uploaded_file.
     st.session_state['analysis_done'] = False
     st.session_state['analysis_result'] = None
     st.session_state['recs'] = None
+    st.session_state['storage_filename'] = None
+    st.session_state['db_analysis_id'] = None
 if uploaded_file:
     is_valid, result = validate_image(uploaded_file)
 
@@ -473,6 +475,8 @@ if uploaded_file:
             st.session_state['analysis_done'] = True
             st.session_state['analysis_result'] = None
             st.session_state['recs'] = None
+            st.session_state['storage_filename'] = None
+            st.session_state['db_analysis_id'] = None
 
         # Показываем результаты, если анализ был выполнен
         if st.session_state.get('analysis_done'):
@@ -562,12 +566,15 @@ if uploaded_file:
                     else:
                         st.success("✅ Фото соответствует стандартам!")
 
-                    if recs:
-                        # Сохранение результата в базу данных
+                    if recs and st.session_state.get('db_analysis_id'):
+                        st.success(f"✅ Результат сохранён в БД (ID: {st.session_state['db_analysis_id'][:8]}...)")
+                    elif recs:
+                        # Сохранение результата в базу данных (один раз на анализ, а не на каждый rerun)
                         try:
                             export_data_for_db = {
                                 'filename': uploaded_file.name,
-                                'storage_filename': storage_name,  # Используем локальную переменную!
+                                # Из session_state: локальная переменная не переживает rerun Streamlit
+                                'storage_filename': st.session_state['storage_filename'],
                                 'overall_score': score_data['score'],
                                 'verdict': score_data['verdict'],
                                 'metrics': {
@@ -601,15 +608,13 @@ if uploaded_file:
                             }
 
                             analysis_id = db_repo.save_analysis_result(export_data_for_db)
+                            st.session_state['db_analysis_id'] = str(analysis_id)
                             st.success(f"✅ Результат сохранён в БД (ID: {str(analysis_id)[:8]}...)")
 
                         except Exception as db_error:
                             st.warning(f"⚠️ Не удалось сохранить в БД: {db_error}")
-                            analysis_id = db_repo.save_analysis_result(export_data_for_db)
-                            st.success(f"✅ Результат сохранён в БД (ID: {str(analysis_id)[:8]}...)")
 
-                        except Exception as db_error:
-                            st.warning(f"⚠️ Не удалось сохранить в БД: {db_error}")
+                    if recs:
                         formatted_recs = format_recommendations(recs)
                         st.markdown(f"""
                         <div style="background:rgba(30,40,60,0.7);border:1px solid rgba(100,180,255,0.3);border-radius:12px;padding:20px;margin-top:15px;">

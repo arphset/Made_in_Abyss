@@ -43,10 +43,14 @@ class DatabaseRepository:
         exposure = metrics.get('exposure', {})
         composition = metrics.get('composition', {})
 
+        storage_filename = data.get('storage_filename')
+        if not storage_filename:
+            raise ValueError("storage_filename пустой: файл не был сохранён на диск перед записью в БД")
+
         # Подготавливаем данные с значениями по умолчанию
         params = {
             'filename': data.get('filename', ''),
-            'storage_filename': data.get('storage_filename', data.get('filename', '')),
+            'storage_filename': storage_filename,
             'overall_score': data.get('overall_score', 0),
             'verdict': data.get('verdict', ''),
 

@@ -79,6 +79,10 @@ class DatabaseRepository:
             'file_size_kb': data.get('file_info', {}).get('file_size_kb', 0)
         }
 
+        # numpy-скаляры (np.float64, np.bool_ и т.п.) приводим к нативным типам Python:
+        # psycopg2 подставляет их в SQL как "np.float64(...)" (repr из NumPy 2)
+        params = {k: v.item() if hasattr(v, 'item') else v for k, v in params.items()}
+
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:

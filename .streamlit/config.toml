@@ -1,6 +1,10 @@
 [browser]
 gatherUsageStats = false
 
+[client]
+# Скрыть кнопку Deploy и меню разработчика Streamlit для пользователей
+toolbarMode = "viewer"
+
 [server]
 enableCORS = false
 enableXsrfProtection = false

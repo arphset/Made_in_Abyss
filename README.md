@@ -1,10 +1,58 @@
-# 📸 QualityJPG — AI-анализ качества фото для маркетплейсов
+<div align="center">
+
+# 📸 QualityJPG
+
+**AI-анализ качества фото товаров для маркетплейсов**
+
+Проверьте фото до публикации: оценка из 10, список дефектов и советы по исправлению — за секунды.
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.41-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.10-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-111F68)](https://docs.ultralytics.com/)
+[![Ollama](https://img.shields.io/badge/LLM-Ollama%20qwen2.5-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Tests](https://img.shields.io/badge/tests-43%20passed-2EA44F)](docs/TEST_REPORT.md)
+[![Response time](https://img.shields.io/badge/%D0%B2%D1%80%D0%B5%D0%BC%D1%8F%20%D0%BE%D1%82%D0%B2%D0%B5%D1%82%D0%B0-%E2%89%8812%20%D1%81%20%28%D0%BD%D0%BE%D1%80%D0%BC%D0%B0%2030%20%D1%81%29-2EA44F)](docs/TEST_REPORT.md#2-время-отклика-задача-71-r0101)
+
+<img src="docs/screenshots/02_analysis.jpg" alt="Результат анализа фото" width="860">
+
+</div>
+
+---
 
 Информационная система «QualityJPG» автоматически проверяет фотографии товаров перед публикацией:
 оценивает резкость, экспозицию и композицию алгоритмами компьютерного зрения, выставляет оценку
 по 10-балльной шкале и формирует текстовые рекомендации с помощью локальной LLM (Ollama).
+Все данные остаются на вашем сервере — фото не уходят во внешние облачные API.
 
 Учебный проект по дисциплине «Технологии создания и поддержки ПО» (ПИ21/1, Ерёмин Аким).
+
+## Как это работает
+
+1. **Загрузите фото** (JPG/PNG до 10 МБ) — файл сохраняется в хранилище под уникальным UUID.
+2. **Компьютерное зрение** за 0,2–3 с оценивает резкость (ACF, лапласиан, градиент Собеля),
+   экспозицию (пересвет и недосвет по гистограмме) и композицию (YOLOv8 находит товар и считает заполнение кадра).
+3. **Оценка из 10 и список дефектов** появляются сразу.
+4. **Локальная LLM** (Ollama, qwen2.5:3b) пишет рекомендации — текст появляется на странице по мере генерации.
+5. Результат сохраняется в истории; администратор видит статистику по всей системе.
+
+## Скриншоты
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01_login.jpg" alt="Вход"><br><sub><b>Вход и регистрация</b> — доступ только после авторизации</sub></td>
+    <td width="50%"><img src="docs/screenshots/06_admin_log.jpg" alt="Журнал действий"><br><sub><b>Журнал действий</b> — входы, загрузки, анализы, отказы в доступе</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/04_admin_stats.jpg" alt="Статистика"><br><sub><b>Админ-панель: статистика</b> — проверки по дням, вердикты, частые дефекты, топ пользователей, время отклика</sub></td>
+    <td><img src="docs/screenshots/03_history.jpg" alt="История проверок"><br><sub><b>Мои проверки</b> — история с полным отчётом и рекомендациями AI</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/05_admin_reports.jpg" alt="Отчёты всех проверок"><br><sub><b>Отчёты всех проверок</b> — фильтры по пользователю и вердикту, выгрузка в CSV, просмотр любого отчёта</sub></td>
+  </tr>
+</table>
 
 ## Возможности
 

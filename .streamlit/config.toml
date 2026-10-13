@@ -4,3 +4,8 @@ gatherUsageStats = false
 [server]
 enableCORS = false
 enableXsrfProtection = false
+# Файловое хранилище не раздаётся как статика (S.01.03, задача 7.2)
+enableStaticServing = false
+
+[theme]
+base = "dark"

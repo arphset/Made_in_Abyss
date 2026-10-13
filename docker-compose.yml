@@ -11,7 +11,9 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Скрипты выполняются при первой инициализации тома pgdata (по алфавиту)
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./database/migrations/002_auth_admin.sql:/docker-entrypoint-initdb.d/02_auth_admin.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qualityjpg_user -d qualityjpg"]
       interval: 5s
@@ -28,10 +30,16 @@ services:
       # ВАЖНО: сначала подтомы, потом общий том!
       - ./frontend/uploads:/app/frontend/uploads
       - ./assets:/app/assets
-      - ./frontend/app.py:/app/frontend/app.py
+      - ./frontend:/app/frontend
+      - ./database:/app/database
+      - ./.streamlit:/app/.streamlit
     environment:
       - DATABASE_URL=postgresql://qualityjpg_user:qualityjpg_secret@db:5432/qualityjpg
       - OLLAMA_HOST=http://host.docker.internal:11434
+      - APP_TIMEZONE=Europe/Moscow
+      # Учётная запись администратора создаётся при первом запуске, если её нет
+      - ADMIN_LOGIN=${ADMIN_LOGIN:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin12345}
     depends_on:
       db:
         condition: service_healthy

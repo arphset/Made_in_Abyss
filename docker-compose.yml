@@ -14,6 +14,7 @@ services:
       # Скрипты выполняются при первой инициализации тома pgdata (по алфавиту)
       - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
       - ./database/migrations/002_auth_admin.sql:/docker-entrypoint-initdb.d/02_auth_admin.sql
+      - ./database/migrations/003_response_time.sql:/docker-entrypoint-initdb.d/03_response_time.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qualityjpg_user -d qualityjpg"]
       interval: 5s
@@ -33,10 +34,16 @@ services:
       - ./frontend:/app/frontend
       - ./database:/app/database
       - ./.streamlit:/app/.streamlit
+      - ./ML&CV_Module:/app/ML&CV_Module
+      - ./tests:/app/tests
+      - ./test_jpegs:/app/test_jpegs
     environment:
       - DATABASE_URL=postgresql://qualityjpg_user:qualityjpg_secret@db:5432/qualityjpg
       - OLLAMA_HOST=http://host.docker.internal:11434
       - APP_TIMEZONE=Europe/Moscow
+      # Веса YOLO из смонтированной папки: не скачиваются заново при пересоздании контейнера
+      - YOLO_WEIGHTS=/app/frontend/yolov8n.pt
+      - OLLAMA_MODEL=qwen2.5:3b
       # Учётная запись администратора создаётся при первом запуске, если её нет
       - ADMIN_LOGIN=${ADMIN_LOGIN:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin12345}

@@ -1,12 +1,13 @@
 import json
 import os
+import time
 
 import cv2
 import numpy as np
 import streamlit as st
 
 from main import analyze_image
-from ollama.ollama_access import get_recommendations
+from ollama.ollama_access import LLM_ERROR_PREFIX, stream_recommendations
 from filters.score_calculator import calculate_quality_score
 
 from database import db_repo
@@ -16,6 +17,9 @@ import storage
 
 # Страница «Анализ фото» (функционал продавца, доступен и администратору — F.03.02)
 user = current_user()
+
+# R.01.01: норматив времени ответа для файлов до 10 МБ
+RESPONSE_LIMIT_S = 30.0
 
 def validate_image(file):
     MAX_SIZE = 10 * 1024 * 1024
@@ -88,8 +92,11 @@ if uploaded_file:
             try:
                 # Если результаты ещё не посчитаны — считаем
                 if st.session_state.get('analysis_result') is None:
+                    # 7.1: замер времени от нажатия кнопки до отчёта (R.01.01)
+                    started = time.perf_counter()
                     with st.spinner("⏳ Нейросеть анализирует изображение..."):
-                        file_path, storage_name = storage.save_image(uploaded_file.name, img_array)
+                        # Оригинал сохраняется как есть, без перекодирования (шаг 3 диаграммы последовательностей)
+                        file_path, storage_name = storage.save_original(uploaded_file.name, uploaded_file.getvalue())
                         log_action('upload', f"{uploaded_file.name} → {storage_name}")
                         try:
                             st.session_state['analysis_result'] = analyze_image(file_path)
@@ -100,12 +107,11 @@ if uploaded_file:
                         st.session_state['storage_filename'] = storage_name
                         if "error" in st.session_state['analysis_result']:
                             log_action('analysis_error', f"{uploaded_file.name}: {st.session_state['analysis_result']['error']}")
-
-                    if "error" not in st.session_state['analysis_result']:
-                        with st.spinner(" Формирую рекомендации..."):
-                            st.session_state['recs'] = get_recommendations(st.session_state['analysis_result'])
-                    else:
-                        st.session_state['recs'] = None
+                    st.session_state['timings'] = {
+                        'started': started,
+                        'cv_ms': int((time.perf_counter() - started) * 1000),
+                    }
+                    st.session_state['recs'] = None
 
                 analysis_result = st.session_state['analysis_result']
                 recs = st.session_state.get('recs')
@@ -179,6 +185,32 @@ if uploaded_file:
                     else:
                         st.success("✅ Фото соответствует стандартам!")
 
+                    # Рекомендации генерируются ПОСЛЕ показа первичного отчёта и выводятся потоком:
+                    # пользователь видит оценку и метрики сразу, а текст AI — по мере генерации
+                    timings = st.session_state.get('timings', {})
+                    if recs is None:
+                        llm_started = time.perf_counter()
+                        stream_box = st.empty()
+                        with stream_box.container():
+                            st.markdown('<h3 style="color:#4a9eff;">💡 Рекомендации AI формируются…</h3>',
+                                        unsafe_allow_html=True)
+                            recs = st.write_stream(stream_recommendations(analysis_result))
+                        stream_box.empty()
+                        st.session_state['recs'] = recs
+                        timings['llm_ms'] = int((time.perf_counter() - llm_started) * 1000)
+                        timings['total_ms'] = int((time.perf_counter() - timings.get('started', llm_started)) * 1000)
+                        st.session_state['timings'] = timings
+                        if LLM_ERROR_PREFIX in recs:
+                            log_action('llm_error', f"{uploaded_file.name}: Ollama недоступна")
+
+                    if 'total_ms' in timings:
+                        total_s = timings['total_ms'] / 1000
+                        st.caption(f"⏱️ Первичный отчёт: {timings['cv_ms'] / 1000:.1f} с • "
+                                   f"Рекомендации AI: {timings['llm_ms'] / 1000:.1f} с • Всего: {total_s:.1f} с")
+                        if total_s > RESPONSE_LIMIT_S:
+                            st.warning(f"⏱️ Время обработки ({total_s:.1f} с) превысило норматив "
+                                       f"{RESPONSE_LIMIT_S:.0f} с. Возможно, сервер перегружен — попробуйте позже.")
+
                     if recs and st.session_state.get('db_analysis_id'):
                         st.success(f"✅ Результат сохранён в БД (ID: {st.session_state['db_analysis_id'][:8]}...)")
                     elif recs:
@@ -215,6 +247,7 @@ if uploaded_file:
                                 },
                                 'penalties': score_data.get('penalties', []),
                                 'ai_recommendations': recs,
+                                'timings': timings,
                                 'file_info': {
                                     'resolution': f"{img_array.shape[1]}x{img_array.shape[0]}",
                                     'file_size_kb': round(uploaded_file.size / 1024, 1)

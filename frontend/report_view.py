@@ -121,6 +121,8 @@ def render_report_details(record: dict, show_owner: bool = False):
         meta = f"🕒 {fmt_dt(record.get('upload_date'))}"
         if show_owner:
             meta += f" • 👤 {record.get('login') or 'Без учётной записи'}"
+        if record.get('total_time_ms'):
+            meta += f" • ⏱️ {record['total_time_ms'] / 1000:.1f} с"
         st.caption(meta + f" • ID: {str(record['id'])[:8]}…")
 
         penalties = parse_json_list(record.get('penalties'))

@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 
 import streamlit as st
 
@@ -33,7 +34,27 @@ def init_database():
     return True
 
 
+@st.cache_resource
+def warmup_models():
+    """
+    7.1: прогрев моделей в фоне при старте сервера — YOLO загружает веса, Ollama поднимает LLM в память.
+    Без прогрева первый анализ после запуска занимал до 26 с вместо 6–12 с.
+    """
+    def _warmup():
+        from filters.YOLO import warmup as yolo_warmup
+        from ollama.ollama_access import warmup as ollama_warmup
+        try:
+            yolo_warmup()
+        except Exception as e:
+            print(f"Прогрев YOLO не удался: {e}")
+        ollama_warmup()
+
+    threading.Thread(target=_warmup, daemon=True).start()
+    return True
+
+
 apply_theme()
+warmup_models()
 
 try:
     init_database()

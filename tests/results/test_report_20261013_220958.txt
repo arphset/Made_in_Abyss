@@ -1,0 +1,60 @@
+QualityJPG — протокол тестирования, 13.10.2026 22:09:17
+Ollama: доступна
+
+test_full_chain (test_integration.FullScenarioTest.test_full_chain) ... ok
+test_10mb_image_primary_report_within_limit (test_ml.CvAnalysisTest.test_10mb_image_primary_report_within_limit)
+R.01.01: первичный отчёт для файла ~10 МБ — с большим запасом до 30 с ... ok
+test_all_sample_images_analyzed (test_ml.CvAnalysisTest.test_all_sample_images_analyzed) ... ok
+test_missing_file_returns_error_instead_of_crash (test_ml.CvAnalysisTest.test_missing_file_returns_error_instead_of_crash)
+R.01.03: сбой анализа — понятное сообщение, а не исключение ... ok
+test_yolo_model_loaded_once (test_ml.CvAnalysisTest.test_yolo_model_loaded_once)
+7.1: модель кэшируется, а не грузится с диска на каждый анализ ... ok
+test_analysis_error_passthrough (test_ml.OllamaFailureTest.test_analysis_error_passthrough) ... ok
+test_unreachable_ollama_gives_readable_message (test_ml.OllamaFailureTest.test_unreachable_ollama_gives_readable_message)
+R.01.03: недоступность LLM не роняет приложение ... ok
+test_recommendations_format_and_time (test_ml.OllamaRecommendationsTest.test_recommendations_format_and_time) ... ok
+test_stream_first_chunk_is_immediate (test_ml.OllamaRecommendationsTest.test_stream_first_chunk_is_immediate)
+Потоковый вывод: блок метрик отдаётся сразу, без ожидания LLM ... ok
+test_admin_sees_everything (test_repository.AccessControlTest.test_admin_sees_everything) ... ok
+test_history_is_private (test_repository.AccessControlTest.test_history_is_private) ... ok
+test_other_seller_denied (test_repository.AccessControlTest.test_other_seller_denied) ... ok
+test_owner_sees_report (test_repository.AccessControlTest.test_owner_sees_report) ... ok
+test_log_and_filter (test_repository.ActivityLogTest.test_log_and_filter) ... ok
+test_log_never_raises (test_repository.ActivityLogTest.test_log_never_raises) ... ok
+test_migrations_are_idempotent (test_repository.MigrationsTest.test_migrations_are_idempotent) ... ok
+test_daily_and_verdicts (test_repository.StatisticsTest.test_daily_and_verdicts) ... ok
+test_reports_filters (test_repository.StatisticsTest.test_reports_filters) ... ok
+test_response_time_stats (test_repository.StatisticsTest.test_response_time_stats) ... ok
+test_summary_counts (test_repository.StatisticsTest.test_summary_counts) ... ok
+test_top_issues_grouped_without_details (test_repository.StatisticsTest.test_top_issues_grouped_without_details) ... ok
+test_top_users (test_repository.StatisticsTest.test_top_users) ... ok
+test_login_is_unique (test_repository.UsersTest.test_login_is_unique) ... ok
+test_register_and_authenticate (test_repository.UsersTest.test_register_and_authenticate) ... ok
+test_seeded_admin (test_repository.UsersTest.test_seeded_admin) ... ok
+test_admin_login_has_admin_link (test_ui.LoginTest.test_admin_login_has_admin_link) ... ok
+test_anonymous_sees_only_login (test_ui.LoginTest.test_anonymous_sees_only_login) ... ok
+test_registration_validation (test_ui.LoginTest.test_registration_validation) ... ok
+test_seller_login_has_no_admin_link (test_ui.LoginTest.test_seller_login_has_no_admin_link) ... ok
+test_wrong_password (test_ui.LoginTest.test_wrong_password) ... ok
+test_admin_page_all_periods (test_ui.PagesTest.test_admin_page_all_periods) ... ok
+test_admin_page_forbidden_for_seller (test_ui.PagesTest.test_admin_page_forbidden_for_seller)
+S.01.02: даже при прямом запуске страницы продавец получает 403 ... ok
+test_admin_page_renders_for_admin (test_ui.PagesTest.test_admin_page_renders_for_admin) ... ok
+test_analyze_page_has_uploader (test_ui.PagesTest.test_analyze_page_has_uploader)
+U.01.01 / F.01.01: страница анализа с загрузкой JPG/PNG ... ok
+test_history_page_empty_for_new_seller (test_ui.PagesTest.test_history_page_empty_for_new_seller) ... ok
+test_markdown_is_cleaned (test_unit.FormatRecommendationsTest.test_markdown_is_cleaned) ... ok
+test_hash_is_not_plain_and_salted (test_unit.PasswordHashingTest.test_hash_is_not_plain_and_salted) ... ok
+test_verify (test_unit.PasswordHashingTest.test_verify) ... ok
+test_bad_photo_is_clamped (test_unit.ScoreCalculatorTest.test_bad_photo_is_clamped) ... ok
+test_perfect_photo (test_unit.ScoreCalculatorTest.test_perfect_photo) ... ok
+test_path_traversal_rejected (test_unit.StorageTest.test_path_traversal_rejected) ... ok
+test_save_original_keeps_bytes (test_unit.StorageTest.test_save_original_keeps_bytes) ... ok
+test_storage_overview (test_unit.StorageTest.test_storage_overview) ... ok
+
+----------------------------------------------------------------------
+Ran 43 tests in 34.967s
+
+OK
+
+Итого: 43 тестов за 35.0 с — успешно 43, провалено 0, ошибок 0, пропущено 0

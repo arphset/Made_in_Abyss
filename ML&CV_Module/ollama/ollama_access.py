@@ -9,33 +9,51 @@ for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https
 
 # Адрес Ollama из переменной окружения
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
+OLLAMA_TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "60"))
+# Модель держится в памяти Ollama между запросами (иначе выгружается через 5 минут простоя)
+OLLAMA_KEEP_ALIVE = os.environ.get("OLLAMA_KEEP_ALIVE", "60m")
+# Ограничение длины ответа: оценка + 3–5 рекомендаций укладываются с запасом
+MAX_TOKENS = int(os.environ.get("OLLAMA_MAX_TOKENS", "350"))
 
-def get_recommendations(data: dict):
-    """Генерирует рекомендации через локальную Ollama"""
+LLM_ERROR_PREFIX = "⚠️ Ошибка связи с Ollama"
 
-    if "error" in data:
-        return f"❌ Анализ не выполнен: {data['error']}. Проверьте имя файла и путь."
+# КЛИЕНТ БЕЗ ПРОКСИ — trust_env=False игнорирует ВСЕ системные прокси.
+# Создаётся один раз: переиспользует HTTP-соединение между запросами.
+_client = OpenAI(
+    base_url=f"{OLLAMA_HOST}/v1",
+    api_key="ollama",
+    http_client=httpx.Client(timeout=OLLAMA_TIMEOUT, trust_env=False),
+)
 
-    def safe_fmt(value, format_spec):
-        try:
-            if value is None:
-                return "N/A"
-            return f"{float(value):{format_spec}}"
-        except (ValueError, TypeError):
+
+def _safe_fmt(value, format_spec):
+    try:
+        if value is None:
             return "N/A"
+        return f"{float(value):{format_spec}}"
+    except (ValueError, TypeError):
+        return "N/A"
 
+
+def _build_prompt(data: dict):
+    """
+    Возвращает (блок метрик, промпт).
+    Блок метрик формируется кодом и подставляется в начало отчёта — раньше LLM переписывала
+    его сама (~150 лишних токенов на каждый запрос, основная часть времени ответа на CPU).
+    """
     fill_rate_val = data.get('fill_rate')
-    fill_rate_display = safe_fmt(fill_rate_val * 100 if fill_rate_val is not None else None, '.1f')
+    fill_rate_display = _safe_fmt(fill_rate_val * 100 if fill_rate_val is not None else None, '.1f')
 
     metrics_text = (
-        f"ACF (автокорреляция, размытие): {safe_fmt(data.get('acf_score'), '.3f')}\n"
-        f"Лапласиан глобальный (текстура): {safe_fmt(data.get('laplacian_var'), '.0f')}\n"
-        f"Лапласиан локальный (медиана по блокам): {safe_fmt(data.get('median_laplacian'), '.0f')}\n"
-        f"Вариация градиента Собеля (чёткость краёв): {safe_fmt(data.get('sobel_var'), '.0f')}\n"
-        f"Индекс чёткости (0.0-1.0): {safe_fmt(data.get('sharpness_score'), '.2f')}\n"
-        f"Яркость: {safe_fmt(data.get('brightness'), '.1f')}\n"
-        f"Пересвет: {safe_fmt(data.get('overexposed_pct'), '.1f')}%\n"
-        f"Недосвет: {safe_fmt(data.get('underexposed_pct'), '.1f')}%\n"
+        f"ACF (автокорреляция, размытие): {_safe_fmt(data.get('acf_score'), '.3f')}\n"
+        f"Лапласиан глобальный (текстура): {_safe_fmt(data.get('laplacian_var'), '.0f')}\n"
+        f"Лапласиан локальный (медиана по блокам): {_safe_fmt(data.get('median_laplacian'), '.0f')}\n"
+        f"Вариация градиента Собеля (чёткость краёв): {_safe_fmt(data.get('sobel_var'), '.0f')}\n"
+        f"Индекс чёткости (0.0-1.0): {_safe_fmt(data.get('sharpness_score'), '.2f')}\n"
+        f"Яркость: {_safe_fmt(data.get('brightness'), '.1f')}\n"
+        f"Пересвет: {_safe_fmt(data.get('overexposed_pct'), '.1f')}%\n"
+        f"Недосвет: {_safe_fmt(data.get('underexposed_pct'), '.1f')}%\n"
         f"Заполнение кадра: {fill_rate_display}%\n"
         f"Смещение от центра: {'Да' if data.get('is_off_center') else 'Нет'}\n"
         f"Товар найден: {'Да' if data.get('object_found', True) else 'Нет'}"
@@ -44,9 +62,9 @@ def get_recommendations(data: dict):
     issues = data.get('issues', [])
     issues_text = ", ".join(issues) if issues else "Проблем не выявлено"
 
-    sharpness_val = safe_fmt(data.get('sharpness_score'), '.2f')
+    sharpness_val = _safe_fmt(data.get('sharpness_score'), '.2f')
 
-# Определяем вердикт по чёткости ПРЯМО в Python
+    # Определяем вердикт по чёткости ПРЯМО в Python
     if float(data.get('sharpness_score', 0)) > 0.7:
         sharpness_verdict = f"Фото чёткое (индекс чёткости {sharpness_val})"
     elif float(data.get('sharpness_score', 0)) > 0.50:
@@ -55,10 +73,9 @@ def get_recommendations(data: dict):
         sharpness_verdict = f"Фото размытое (индекс чёткости {sharpness_val})"
 
     # Определяем комментарий по заполнению
-    fill_rate_val = data.get('fill_rate', 0)
     try:
-        fill_rate_val = float(fill_rate_val)
-    except:
+        fill_rate_val = float(data.get('fill_rate', 0))
+    except (TypeError, ValueError):
         fill_rate_val = 0
 
     if fill_rate_val >= 0.30:
@@ -68,7 +85,7 @@ def get_recommendations(data: dict):
     else:
         fill_comment = f"Заполнение кадра {fill_rate_val*100:.1f}% — критически мало, товар плохо виден."
 
-    prompt = f"""Ты эксперт по фотографии для маркетплейсов. Дай краткий отчёт строго по формату ниже. НЕ повторяй инструкции. НЕ пиши заголовки разделов типа "ШАБЛОН" или "ПРАВИЛА".
+    prompt = f"""Ты эксперт по фотографии для маркетплейсов. Дай краткий отчёт строго по формату ниже. НЕ повторяй инструкции и метрики. НЕ пиши заголовки разделов типа "ШАБЛОН" или "ПРАВИЛА".
 
 МЕТРИКИ:
 {metrics_text}
@@ -83,19 +100,6 @@ def get_recommendations(data: dict):
 
 ФОРМАТ ОТВЕТА (пример):
 
-Метрики фото:
-ACF (автокорреляция, размытие): 0.300
-Лапласиан глобальный (текстура): 1500
-Лапласиан локальный (медиана по блокам): 800
-Вариация градиента Собеля (чёткость краёв): 2000
-Индекс чёткости (0.0-1.0): 0.85
-Яркость: 120.0
-Пересвет: 0.5%
-Недосвет: 2.0%
-Заполнение кадра: 45.0%
-Смещение от центра: Нет
-Товар найден: Да
-
 Оценка качества:
 Фото чёткое (индекс чёткости 0.85). Товар хорошо виден, экспозиция в норме.
 
@@ -104,27 +108,55 @@ ACF (автокорреляция, размытие): 0.300
 2. Можно немного увеличить заполнение кадра.
 3. Попробуйте добавить больше деталей в фон.
 
-ТВОЙ ОТВЕТ (точно в таком же формате, только с реальными данными из МЕТРИКИ и ПРОБЛЕМЫ выше):"""
+ТВОЙ ОТВЕТ (начни со строки "Оценка качества:", точно в таком же формате, только с реальными данными из МЕТРИКИ и ПРОБЛЕМЫ выше):"""
+
+    return f"Метрики фото:\n{metrics_text}\n\n", prompt
 
 
+def stream_recommendations(data: dict):
+    """
+    Генератор текста рекомендаций по частям (для потокового вывода в интерфейсе).
+    Первым фрагментом отдаётся блок метрик, затем — ответ модели по мере генерации.
+    Ошибки не пробрасываются: возвращается понятное сообщение (R.01.03).
+    """
+    if "error" in data:
+        yield f"❌ Анализ не выполнен: {data['error']}. Проверьте имя файла и путь."
+        return
 
-    # КЛИЕНТ БЕЗ ПРОКСИ — trust_env=False игнорирует ВСЕ системные прокси
-    client = OpenAI(
-        base_url=f"{OLLAMA_HOST}/v1",
-        api_key="ollama",
-        http_client=httpx.Client(
-            timeout=60.0,
-            trust_env=False
-        )
-    )
+    metrics_block, prompt = _build_prompt(data)
+    yield metrics_block
 
     try:
-        response = client.chat.completions.create(
-            model="qwen2.5:3b",
+        stream = _client.chat.completions.create(
+            model=OLLAMA_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            timeout=60
+            max_tokens=MAX_TOKENS,
+            timeout=OLLAMA_TIMEOUT,
+            stream=True,
         )
-        return response.choices[0].message.content
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
     except Exception as e:
-        return f"⚠️ Ошибка связи с Ollama: {str(e)}. Проверьте, запущен ли сервер."
+        yield f"\n{LLM_ERROR_PREFIX}: {str(e)}. Проверьте, запущен ли сервер."
+
+
+def get_recommendations(data: dict):
+    """Генерирует рекомендации через локальную Ollama (целиком, без потока)"""
+    return "".join(stream_recommendations(data))
+
+
+def warmup():
+    """Загрузить модель в память Ollama заранее, чтобы первый запрос не ждал холодного старта"""
+    try:
+        httpx.post(
+            f"{OLLAMA_HOST}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": "", "keep_alive": OLLAMA_KEEP_ALIVE},
+            timeout=OLLAMA_TIMEOUT,
+            trust_env=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Ollama недоступна при прогреве: {e}")
+        return False

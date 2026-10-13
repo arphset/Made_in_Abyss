@@ -16,12 +16,16 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 _STORAGE_NAME_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png)$')
 
 
-def save_image(original_name: str, img_array: np.ndarray):
-    """Сохранить изображение под уникальным UUID. Возвращает (путь, имя в хранилище)."""
+def save_original(original_name: str, data: bytes):
+    """
+    Сохранить оригинал файла байт-в-байт под уникальным UUID (без перекодирования через OpenCV:
+    быстрее для больших файлов и сохраняет исходное качество). Возвращает (путь, имя в хранилище).
+    """
     ext = os.path.splitext(original_name)[1].lower()
     unique_name = str(uuid.uuid4()) + ext
     path = os.path.join(UPLOAD_DIR, unique_name)
-    cv2.imwrite(path, img_array)
+    with open(path, 'wb') as f:
+        f.write(data)
     return path, unique_name
 
 

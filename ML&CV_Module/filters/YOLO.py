@@ -1,11 +1,50 @@
+import os
+import threading
+
 from ultralytics import YOLO
 import numpy as np
+
+_ML_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_ROOT = os.path.dirname(_ML_DIR)
+
+# Модель загружается один раз на процесс (раньше — с диска при каждом анализе)
+_model = None
+_model_lock = threading.Lock()
+
+
+def _weights_path():
+    """Веса из постоянного места, чтобы не скачивать их заново при каждом пересоздании контейнера"""
+    candidates = [
+        os.environ.get('YOLO_WEIGHTS', ''),
+        os.path.join(_ML_DIR, 'yolov8n.pt'),
+        os.path.join(_PROJECT_ROOT, 'frontend', 'yolov8n.pt'),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return 'yolov8n.pt'  # ultralytics скачает веса автоматически
+
+
+def get_model():
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                _model = YOLO(_weights_path())
+    return _model
+
+
+def warmup():
+    """Загрузка весов и пробный прогон, чтобы первый пользователь не ждал холодного старта"""
+    detect_objects_yolo(np.zeros((640, 640, 3), dtype=np.uint8))
 
 
 def detect_objects_yolo(image):
     """Обнаружение объектов с помощью YOLO"""
-    model = YOLO('yolov8n.pt')
-    results = model(image, verbose=False)
+    model = get_model()
+    # Предиктор ultralytics не потокобезопасен, а сессии Streamlit работают в разных потоках
+    with _model_lock:
+        results = model(image, verbose=False)
 
     h, w = image.shape[:2]
     image_area = h * w

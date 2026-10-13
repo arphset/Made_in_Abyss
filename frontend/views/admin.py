@@ -21,6 +21,7 @@ ACCENT = '#4a9eff'
 VIOLET = '#6c5ce7'
 GOOD = '#4ade80'
 BAD = '#f87171'
+RESPONSE_LIMIT_S = 30.0  # R.01.01
 VERDICT_ORDER = ['Отлично', 'Хорошо', 'Удовлетворительно', 'Плохо', 'Критично']
 VERDICT_COLORS = ['#38bdf8', GOOD, '#facc15', '#fb923c', BAD]
 
@@ -153,6 +154,38 @@ with tab_stats:
                 'last_check': 'Последняя проверка',
             },
         )
+
+    # Время отклика (задача 7.1, R.01.01)
+    st.markdown('<div class="section-title">⏱️ Время отклика (норматив — 30 с)</div>', unsafe_allow_html=True)
+    rt = db_repo.get_response_time_stats(date_from, date_to, RESPONSE_LIMIT_S)
+    if not rt['measured']:
+        st.info("📭 За период нет проверок с замером времени (замер ведётся с Спринта 4)")
+    else:
+        t = st.columns(5)
+        stat_card(t[0], f"{rt['cv_avg_s']:.1f} с", "Первичный отчёт (среднее)")
+        stat_card(t[1], f"{rt['total_avg_s']:.1f} с", "Полный ответ (среднее)")
+        stat_card(t[2], f"{rt['total_p95_s']:.1f} с", "95-й перцентиль")
+        stat_card(t[3], f"{rt['total_max_s']:.1f} с", "Максимум",
+                  'bad' if rt['total_max_s'] > RESPONSE_LIMIT_S else 'good')
+        stat_card(t[4], f"{rt['over_limit']} из {rt['measured']}", "Превышений норматива",
+                  'bad' if rt['over_limit'] else 'good')
+
+        times = pd.DataFrame(db_repo.get_response_times(date_from, date_to))
+        times['Проверка'] = [f"{i + 1}. {name}" for i, name in enumerate(times['filename'])]
+        times_long = times.melt(id_vars=['Проверка', 'total_s'], value_vars=['cv_s', 'llm_s'],
+                                var_name='Этап', value_name='Секунд')
+        times_long['Этап'] = times_long['Этап'].map({'cv_s': 'CV-анализ', 'llm_s': 'Рекомендации AI'})
+        bars = alt.Chart(times_long).mark_bar(size=18).encode(
+            x=alt.X('Проверка:N', sort=None, title=None, axis=alt.Axis(labels=False, ticks=False)),
+            y=alt.Y('Секунд:Q', stack=True, title='Секунд'),
+            color=alt.Color('Этап:N', title=None,
+                            scale=alt.Scale(domain=['CV-анализ', 'Рекомендации AI'], range=[ACCENT, VIOLET])),
+            tooltip=['Проверка:N', 'Этап:N', alt.Tooltip('Секунд:Q', format='.1f'),
+                     alt.Tooltip('total_s:Q', title='Всего, с', format='.1f')],
+        )
+        limit_line = alt.Chart(pd.DataFrame({'y': [RESPONSE_LIMIT_S]})).mark_rule(
+            color=BAD, strokeDash=[6, 4], strokeWidth=2).encode(y='y:Q')
+        show_chart(bars + limit_line, height=260)
 
     # Сверка файлового хранилища с БД (D.01.02)
     st.markdown('<div class="section-title">💾 Файловое хранилище</div>', unsafe_allow_html=True)

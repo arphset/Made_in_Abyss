@@ -161,7 +161,8 @@ class DatabaseRepository:
             brightness, overexposed_pct, underexposed_pct,
             fill_rate, is_off_center, object_found,
             issues, penalties, ai_recommendations,
-            resolution, file_size_kb, user_id
+            resolution, file_size_kb, user_id,
+            cv_time_ms, llm_time_ms, total_time_ms
         ) VALUES (
             %(filename)s, %(storage_filename)s, %(overall_score)s, %(verdict)s,
             %(acf_score)s, %(laplacian_global)s, %(laplacian_local_median)s,
@@ -169,7 +170,8 @@ class DatabaseRepository:
             %(brightness)s, %(overexposed_pct)s, %(underexposed_pct)s,
             %(fill_rate)s, %(is_off_center)s, %(object_found)s,
             %(issues)s, %(penalties)s, %(ai_recommendations)s,
-            %(resolution)s, %(file_size_kb)s, %(user_id)s
+            %(resolution)s, %(file_size_kb)s, %(user_id)s,
+            %(cv_time_ms)s, %(llm_time_ms)s, %(total_time_ms)s
         ) RETURNING id
         """
 
@@ -213,7 +215,12 @@ class DatabaseRepository:
             'ai_recommendations': data.get('ai_recommendations', ''),
             'resolution': data.get('file_info', {}).get('resolution', ''),
             'file_size_kb': data.get('file_info', {}).get('file_size_kb', 0),
-            'user_id': data.get('user_id')
+            'user_id': data.get('user_id'),
+
+            # Время обработки (задача 7.1)
+            'cv_time_ms': data.get('timings', {}).get('cv_ms'),
+            'llm_time_ms': data.get('timings', {}).get('llm_ms'),
+            'total_time_ms': data.get('timings', {}).get('total_ms'),
         }
 
         # numpy-скаляры (np.float64, np.bool_ и т.п.) приводим к нативным типам Python:
@@ -388,6 +395,39 @@ class DatabaseRepository:
         params = self._period_params(date_from, date_to)
         params['limit'] = limit
         return self._fetch_all(query, params)
+
+    def get_response_time_stats(self, date_from: date, date_to: date, limit_s: float = 30.0) -> Dict:
+        """Время отклика за период (задача 7.1): среднее, 95-й перцентиль, максимум, превышения норматива"""
+        query = """
+            SELECT
+                COUNT(total_time_ms) AS measured,
+                ROUND(AVG(cv_time_ms) / 1000.0, 2)::float AS cv_avg_s,
+                ROUND(AVG(llm_time_ms) / 1000.0, 2)::float AS llm_avg_s,
+                ROUND(AVG(total_time_ms) / 1000.0, 2)::float AS total_avg_s,
+                ROUND((percentile_cont(0.95) WITHIN GROUP (ORDER BY total_time_ms) / 1000.0)::numeric, 2)::float
+                    AS total_p95_s,
+                ROUND(MAX(total_time_ms) / 1000.0, 2)::float AS total_max_s,
+                COUNT(*) FILTER (WHERE total_time_ms > %(limit_ms)s) AS over_limit
+            FROM analysis_results
+            WHERE total_time_ms IS NOT NULL
+              AND (upload_date AT TIME ZONE %(tz)s)::date BETWEEN %(date_from)s AND %(date_to)s
+        """
+        params = self._period_params(date_from, date_to)
+        params['limit_ms'] = int(limit_s * 1000)
+        return dict(self._fetch_one(query, params))
+
+    def get_response_times(self, date_from: date, date_to: date) -> List[Dict]:
+        """Время каждой проверки за период — для графика"""
+        query = """
+            SELECT upload_date, filename, file_size_kb,
+                   (cv_time_ms / 1000.0)::float AS cv_s, (llm_time_ms / 1000.0)::float AS llm_s,
+                   (total_time_ms / 1000.0)::float AS total_s
+            FROM analysis_results
+            WHERE total_time_ms IS NOT NULL
+              AND (upload_date AT TIME ZONE %(tz)s)::date BETWEEN %(date_from)s AND %(date_to)s
+            ORDER BY upload_date
+        """
+        return self._fetch_all(query, self._period_params(date_from, date_to))
 
     def get_top_issues(self, date_from: date, date_to: date, limit: int = 10) -> List[Dict]:
         """Самые частые дефекты. Уточнения в скобках (проценты) отбрасываются для группировки."""

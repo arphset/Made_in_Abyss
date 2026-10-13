@@ -14,6 +14,7 @@ ACTION_LABELS = {
     'upload': '📤 Загрузка фото',
     'analysis_ok': '✅ Анализ выполнен',
     'analysis_error': '❌ Ошибка анализа',
+    'llm_error': '⚠️ Сбой Ollama',
     'view_report': '👁️ Просмотр отчёта',
     'access_denied': '🚫 Отказ в доступе',
 }
